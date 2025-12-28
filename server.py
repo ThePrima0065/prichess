@@ -5,12 +5,10 @@ import json
 import os
 import uuid
 
-# Store active games: game_id -> { 'players': [ws1, ws2], 'moves': [...] }
 games = {}
 
 async def handler(websocket):
     try:
-        # Receive initial message: create or join
         message = await websocket.recv()
         data = json.loads(message)
 
@@ -25,11 +23,9 @@ async def handler(websocket):
                 await websocket.send(json.dumps({"action": "error", "msg": "Game full or not found"}))
                 return
             games[game_id]["players"].append(websocket)
-            # Notify both players that the game starts
             for player in games[game_id]["players"]:
                 await player.send(json.dumps({"action": "start"}))
 
-        # Relay moves between players
         async for message in websocket:
             data = json.loads(message)
             if data.get("type") == "move":
@@ -39,19 +35,20 @@ async def handler(websocket):
                         if player != websocket:
                             await player.send(json.dumps({"action": "move", "move": data["move"]}))
 
-    except Exception as e:
+    except Exception:
         pass
     finally:
-        # Clean up disconnected player
         for gid in list(games.keys()):
             if websocket in games[gid]["players"]:
                 games[gid]["players"].remove(websocket)
-                if len(games[gid]["players"]) == 0:
+                if not games[gid]["players"]:
                     del games[gid]
 
-# Use PORT from environment (Render sets this)
-port = int(os.environ.get("PORT", 8765))
-start_server = websockets.serve(handler, "0.0.0.0", port)
+async def main():
+    port = int(os.environ.get("PORT", 8765))
+    print(f"Starting WebSocket server on port {port}...")
+    server = await websockets.serve(handler, "0.0.0.0", port)
+    await server.wait_closed()
 
-asyncio.get_event_loop().run_until_complete(start_server)
-asyncio.get_event_loop().run_forever()
+if __name__ == "__main__":
+    asyncio.run(main())
